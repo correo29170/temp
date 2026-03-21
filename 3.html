@@ -3,48 +3,96 @@
 <head>
   <meta charset="UTF-8">
   <title>Radios 80s & Italo</title>
+
   <style>
     .radio {
       display: flex;
       align-items: center;
-      gap: 2px;
-      margin-bottom: 15px;
+      gap: 10px;
+      margin-bottom: 10px;
     }
-    .radio h2 {
-      margin: 0;
+
+    .radio-name {
+      width: 150px;
       font-size: 18px;
-      min-width: 150px;
     }
+
+    button {
+      cursor: pointer;
+      width: 90px;
+    }
+
     audio, iframe {
       height: 40px;
       border: none;
     }
   </style>
 </head>
+
 <body>
+
 <div class="radio">
-  <h2>Wonder 80s</h2>
-  <audio controls src="http://stream.zeno.fm/97gyvgz7kyvtv"></audio>
+  <div class="radio-name">Wonder 80s</div>
+  <button onclick="playRadio('r1')">▶ PLAY</button>
+  <audio id="r1" src="http://stream.zeno.fm/97gyvgz7kyvtv"></audio>
 </div>
+
 <div class="radio">
-  <h2>Italo Disco</h2>
-  <iframe src="https://italo.live-streams.nl:8000/stream" width="300"></iframe>
+  <div class="radio-name">Italo Disco</div>
+  <button onclick="playIframe('f1')">▶ PLAY</button>
+  <iframe id="f1" data-src="https://italo.live-streams.nl:8000/stream" width="300"></iframe>
 </div>
+
 <div class="radio">
-  <h2>Italo Dance</h2>
-  <iframe src="https://mscp2.live-streams.nl:8152/italodance" width="300"></iframe>
+  <div class="radio-name">Italo Dance</div>
+  <button onclick="playIframe('f2')">▶ PLAY</button>
+  <iframe id="f2" data-src="https://mscp2.live-streams.nl:8152/italodance" width="300"></iframe>
 </div>
+
 <div class="radio">
-  <h2>Synthetic FM</h2>
-  <iframe src="https://mediaserv38.live-streams.nl:18030/stream" width="300"></iframe>
+  <div class="radio-name">Synthetic FM</div>
+  <button onclick="playIframe('f3')">▶ PLAY</button>
+  <iframe id="f3" data-src="https://mediaserv38.live-streams.nl:18030/stream" width="300"></iframe>
 </div>
+
 <div class="radio">
-  <h2>La Retro</h2>
-  <iframe src="https://s2.radio.co/s9ecef4f68/listen" width="300"></iframe>
+  <div class="radio-name">La Retro</div>
+  <button onclick="playIframe('f4')">▶ PLAY</button>
+  <iframe id="f4" data-src="https://s2.radio.co/s9ecef4f68/listen" width="300"></iframe>
 </div>
+
 <div class="radio">
-  <h2>Radio Kemonia</h2>
-  <iframe src="https://167.86.86.4:8000/stream" width="300"></iframe>
+  <div class="radio-name">Radio Kemonia</div>
+  <button onclick="playIframe('f5')">▶ PLAY</button>
+  <iframe id="f5" data-src="https://167.86.86.4:8000/stream" width="300"></iframe>
 </div>
+
+<script>
+  const audios = document.querySelectorAll("audio");
+  const iframes = document.querySelectorAll("iframe");
+
+  function stopAll() {
+    audios.forEach(a => {
+      a.pause();
+      a.currentTime = 0;
+    });
+
+    iframes.forEach(f => {
+      f.src = "";
+    });
+  }
+
+  function playRadio(id) {
+    stopAll();
+    document.getElementById(id).play();
+  }
+
+  function playIframe(id) {
+    stopAll();
+    const frame = document.getElementById(id);
+    frame.src = frame.getAttribute("data-src");
+  }
+</script>
+
 </body>
 </html>
