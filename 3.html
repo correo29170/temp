@@ -2,52 +2,84 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Radio JC - Minimal</title>
+<title>Radio JC</title>
+
 <style>
   body {
-    font-family: Arial, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
+    font-family: Arial;
     padding: 20px;
-    margin: 0;
-    background-color: #f9f9f9;
   }
 
-  h2 {
-    margin-bottom: 20px;
+  select {
+    font-size: 30px;
   }
 
-  .radio-button {
-    display: block;
-    width: 90%;
-    max-width: 400px;
-    padding: 15px;
-    margin: 8px 0;
-    font-size: 20px;
-    text-align: center;
-    text-decoration: none;
-    color: white;
-    background-color: #1a73e8;
-    border-radius: 8px;
-    transition: background 0.2s;
+  .player-container {
+    display: none;	
+    position: relative;
+    width: 300px;
+    height: 40px;
+    margin-top: 15px;
   }
 
-  .radio-button:hover {
-    background-color: #155ab6;
+  .player-container audio,
+  .player-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
   }
 </style>
 </head>
+
 <body>
 
-<h2>Radio JC</h2>
+<select id="radioSelect" onchange="playSelected()">
+  <option value=""></option>
+  <option value="audio|http://stream.zeno.fm/97gyvgz7kyvtv">Wonder 80s</option>
+  <option value="iframe|http://procyon.shoutca.st:8032/;">Easy 80s</option>  
+  <option value="iframe|https://italo.live-streams.nl:8000/stream">Italo Disco</option>
+  <option value="iframe|https://mscp2.live-streams.nl:8152/italodance">Italo Dance</option>
+  <option value="iframe|https://mediaserv38.live-streams.nl:18030/stream">Synthetic FM</option>
+  <option value="iframe|https://s2.radio.co/s9ecef4f68/listen">La Retro</option>
+  <option value="iframe|https://167.86.86.4:8000/stream">Radio Kemonia</option>
+  <option value="iframe|https://ais-edge147-dal03.cdnstream.com/1521_128?listeningSessionId=RzNDUUNWVldLUDc3RVcyQ0ZKNTRIQ1dDT0VfYWlzLWVkZ2UxNDctZGFsMDMuY2Ruc3RyZWFtLmNvbTo4MTg2&playerid=esPlayer/stream">Hard Rock Heaven</option>
+  <option value="iframe|http://us5.internet-radio.com:8121/stream?type=http&nocache=381">The Seagull</option>
+</select>
 
-<a href="https://stream.zeno.fm/97gyvgz7kyvtv" target="_blank" class="radio-button">Wonder 80s</a>
-<a href="https://italo.live-streams.nl:8000/stream" target="_blank" class="radio-button">Italo Disco</a>
-<a href="https://mscp2.live-streams.nl:8152/italodance" target="_blank" class="radio-button">Italo Dance</a>
-<a href="https://mediaserv38.live-streams.nl:18030/stream" target="_blank" class="radio-button">Synthetic FM</a>
-<a href="https://s2.radio.co/s9ecef4f68/listen" target="_blank" class="radio-button">La Retro</a>
+<div class="player-container">
+  <audio id="audioPlayer" controls></audio>
+  <iframe id="iframePlayer"></iframe>
+</div>
+
+<script>
+const audio = document.getElementById("audioPlayer");
+const iframe = document.getElementById("iframePlayer");
+
+function stopAll() {
+  audio.pause();
+  audio.src = "";
+  iframe.src = "";
+}
+
+function playSelected() {
+  stopAll();
+
+  const value = document.getElementById("radioSelect").value;
+  if (!value) return;
+
+  const [type, url] = value.split("|");
+
+  if (type === "audio") {
+    audio.src = url;
+    audio.play();
+  } else {
+    iframe.src = url;
+  }
+}
+</script>
 
 </body>
 </html>
