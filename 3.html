@@ -1,97 +1,68 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Radios 80s & Italo</title>
+<meta charset="UTF-8">
+<title>Radio3</title>
 
-  <style>
-    .radio {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
+<style>
+  body {
+    font-family: Arial;
+    padding: 20px;
+  }
 
-    .radio-name {
-      width: 150px;
-      font-size: 18px;
-    }
+  select {
+    font-size: 36px;
+  }
 
-    button {
-      cursor: pointer;
-      width: 90px;
-    }
-
-    audio, iframe {
-      height: 40px;
-      border: none;
-    }
-  </style>
+  audio, iframe {
+    display: block;
+    margin-top: 15px;
+    height: 40px;
+    border: none;
+  }
+</style>
 </head>
 
 <body>
 
-<div class="radio">
-  <div class="radio-name">Wonder 80s</div>
-  <button onclick="playRadio('r1')">▶ PLAY</button>
-  <audio id="r1" src="http://stream.zeno.fm/97gyvgz7kyvtv"></audio>
-</div>
+<select id="radioSelect" onchange="playSelected()">
+  <option value="">-- Elige una radio --</option>
+  <option value="audio|http://stream.zeno.fm/97gyvgz7kyvtv">Wonder 80s</option>
+  <option value="iframe|https://italo.live-streams.nl:8000/stream">Italo Disco</option>
+  <option value="iframe|https://mscp2.live-streams.nl:8152/italodance">Italo Dance</option>
+  <option value="iframe|https://mediaserv38.live-streams.nl:18030/stream">Synthetic FM</option>
+  <option value="iframe|https://s2.radio.co/s9ecef4f68/listen">La Retro</option>
+  <option value="iframe|https://167.86.86.4:8000/stream">Radio Kemonia</option>
+</select>
 
-<div class="radio">
-  <div class="radio-name">Italo Disco</div>
-  <button onclick="playIframe('f1')">▶ PLAY</button>
-  <iframe id="f1" data-src="https://italo.live-streams.nl:8000/stream" width="300"></iframe>
-</div>
-
-<div class="radio">
-  <div class="radio-name">Italo Dance</div>
-  <button onclick="playIframe('f2')">▶ PLAY</button>
-  <iframe id="f2" data-src="https://mscp2.live-streams.nl:8152/italodance" width="300"></iframe>
-</div>
-
-<div class="radio">
-  <div class="radio-name">Synthetic FM</div>
-  <button onclick="playIframe('f3')">▶ PLAY</button>
-  <iframe id="f3" data-src="https://mediaserv38.live-streams.nl:18030/stream" width="300"></iframe>
-</div>
-
-<div class="radio">
-  <div class="radio-name">La Retro</div>
-  <button onclick="playIframe('f4')">▶ PLAY</button>
-  <iframe id="f4" data-src="https://s2.radio.co/s9ecef4f68/listen" width="300"></iframe>
-</div>
-
-<div class="radio">
-  <div class="radio-name">Radio Kemonia</div>
-  <button onclick="playIframe('f5')">▶ PLAY</button>
-  <iframe id="f5" data-src="https://167.86.86.4:8000/stream" width="300"></iframe>
-</div>
+<audio id="audioPlayer" controls></audio>
+<iframe id="iframePlayer" width="300"></iframe>
 
 <script>
-  const audios = document.querySelectorAll("audio");
-  const iframes = document.querySelectorAll("iframe");
+const audio = document.getElementById("audioPlayer");
+const iframe = document.getElementById("iframePlayer");
 
-  function stopAll() {
-    audios.forEach(a => {
-      a.pause();
-      a.currentTime = 0;
-    });
+function stopAll() {
+  audio.pause();
+  audio.src = "";
+  iframe.src = "";
+}
 
-    iframes.forEach(f => {
-      f.src = "";
-    });
+function playSelected() {
+  stopAll();
+
+  const value = document.getElementById("radioSelect").value;
+  if (!value) return;
+
+  const [type, url] = value.split("|");
+
+  if (type === "audio") {
+    audio.src = url;
+    audio.play();
+  } else {
+    iframe.src = url;
   }
-
-  function playRadio(id) {
-    stopAll();
-    document.getElementById(id).play();
-  }
-
-  function playIframe(id) {
-    stopAll();
-    const frame = document.getElementById(id);
-    frame.src = frame.getAttribute("data-src");
-  }
+}
 </script>
 
 </body>
