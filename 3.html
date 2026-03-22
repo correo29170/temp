@@ -15,6 +15,7 @@
   }
 
   .player-container {
+    display: none;	
     position: relative;
     width: 300px;
     height: 40px;
@@ -36,7 +37,7 @@
 <body>
 
 <select id="radioSelect" onchange="playSelected()">
-  <option value="">-- Elige una radio --</option>
+  <option value=""></option>
   <option value="audio|http://stream.zeno.fm/97gyvgz7kyvtv">Wonder 80s</option>
   <option value="iframe|https://italo.live-streams.nl:8000/stream">Italo Disco</option>
   <option value="iframe|https://mscp2.live-streams.nl:8152/italodance">Italo Dance</option>
