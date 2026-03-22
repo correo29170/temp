@@ -14,10 +14,20 @@
     font-size: 30px;
   }
 
-  audio, iframe {
-    display: block;
-    margin-top: 15px;
+  .player-container {
+    position: relative;
+    width: 300px;
     height: 40px;
+    margin-top: 15px;
+  }
+
+  .player-container audio,
+  .player-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     border: none;
   }
 </style>
@@ -35,8 +45,10 @@
   <option value="iframe|https://167.86.86.4:8000/stream">Radio Kemonia</option>
 </select>
 
-<audio id="audioPlayer" controls></audio>
-<iframe id="iframePlayer" width="300"></iframe>
+<div class="player-container">
+  <audio id="audioPlayer" controls></audio>
+  <iframe id="iframePlayer"></iframe>
+</div>
 
 <script>
 const audio = document.getElementById("audioPlayer");
