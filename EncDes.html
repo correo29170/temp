@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>JC</title>
+<style>
+body { font-family: sans-serif; padding: 20px; }
+input, button { margin: 5px 0; padding: 5px; width: 3%; }
+</style>
+</head>
+<body>
+<input type="password" id="password" placeholder="" />
+
+<script>
+// Ejecutar al presionar Enter
+document.getElementById('password').addEventListener('keydown', function(e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        processClipboard();
+    }
+});
+
+// Prefijo que identifica textos encriptados
+const PREFIX = "AESGCM1:";
+
+// Convierte ArrayBuffer <-> Base64
+function ab2b64(buf) {
+    let binary = '';
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+function b642ab(b64) {
+    const binary = atob(b64);
+    const buf = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
+    return buf.buffer;
+}
+
+// Deriva clave AES-GCM desde la contraseña
+async function deriveKey(password, salt) {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+    );
+}
+
+// Encriptar
+async function encrypt(text, password) {
+    const enc = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const key = await deriveKey(password, salt);
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv },
+        key,
+        enc.encode(text)
+    );
+    return PREFIX + ab2b64(salt) + ':' + ab2b64(iv) + ':' + ab2b64(ciphertext);
+}
+
+// Desencriptar
+async function decrypt(data, password) {
+    if (!data.startsWith(PREFIX)) return null;
+    try {
+        const parts = data.slice(PREFIX.length).split(':');
+        if (parts.length !== 3) return null;
+        const salt = b642ab(parts[0]);
+        const iv = b642ab(parts[1]);
+        const ciphertext = b642ab(parts[2]);
+        const key = await deriveKey(password, salt);
+        const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            ciphertext
+        );
+        return new TextDecoder().decode(decrypted);
+    } catch {
+        return null;
+    }
+}
+
+// Procesa portapapeles
+async function processClipboard() {
+    let password = document.getElementById('password').value;
+    if (!password) { alert("Ingrese una contraseña"); return; }
+
+    let text;
+    try { text = await navigator.clipboard.readText(); }
+    catch { alert("No se puede leer el portapapeles."); return; }
+
+    let result = await decrypt(text, password);
+    const now = new Date();
+    const timeString = now.toLocaleTimeString();
+
+    if (result !== null) {
+        await navigator.clipboard.writeText(result);
+        document.title = "JC,";
+    } else {
+        const encrypted = await encrypt(text, password);
+        await navigator.clipboard.writeText(encrypted);
+        document.title = "JC.";
+    }
+
+    // Borrar la contraseña de memoria
+    password = null;
+    document.getElementById('password').value = "";
+}
+</script>
+</body>
+</html>
