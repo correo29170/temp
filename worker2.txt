@@ -1,0 +1,1318 @@
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title></title>
+
+<style>
+body {
+    margin: 0;
+    padding: 20px;
+}
+
+input {
+    width: 120px;
+    height: 20px;
+    padding: 5px;
+    border: 1px solid #ccc;
+    outline: none;
+}
+</style>
+
+</head>
+<body>
+
+<form method="POST" action="/login">
+    <input
+        type="password"
+        name="password"
+        autocomplete="current-password"
+        autofocus
+    >
+</form>
+
+</body>
+</html>`;
+
+const APP_HTML = `<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+
+<title>Encriptar/Desencriptar</title>
+
+<style>
+
+body {
+    font-family: sans-serif;
+    padding: 20px;
+}
+
+textarea {
+    width: 10%;
+    min-width: 3px;
+    height: 20px;
+    padding: 5px;
+    font-family: monospace;
+    background-color: #fff;
+    color: #000;
+    border: 1px solid #cccccc;
+}
+
+textarea:focus {
+    outline: none;
+    border: 1px solid #cccccc;
+}
+
+#fileInput {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+#r2List {
+    margin-top: 10px;
+    list-style-type: none;
+    padding-left: 0;
+}
+
+#r2List li {
+    cursor: pointer;
+    margin-bottom: 3px;
+    font-family: monospace;
+}
+
+#r2List a {
+    color: inherit;
+    text-decoration: none;
+}
+
+#r2List a:hover {
+    text-decoration: underline;
+}
+
+#r2List {
+    display: none;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<textarea id="input"></textarea>
+
+<input type="file" id="fileInput">
+
+<ul id="r2List"></ul>
+
+<script>
+
+const PREFIX = "AESGCM1:";
+
+
+// =====================================================
+// BASE64
+// =====================================================
+
+function ab2b64(buf) {
+
+    let binary = '';
+
+    const bytes =
+        new Uint8Array(buf);
+
+    for (
+        let i = 0;
+        i < bytes.byteLength;
+        i++
+    ) {
+        binary += String.fromCharCode(
+            bytes[i]
+        );
+    }
+
+    return btoa(binary);
+}
+
+
+function b642ab(b64) {
+
+    const binary =
+        atob(b64);
+
+    const buf =
+        new Uint8Array(
+            binary.length
+        );
+
+    for (
+        let i = 0;
+        i < binary.length;
+        i++
+    ) {
+        buf[i] =
+            binary.charCodeAt(i);
+    }
+
+    return buf.buffer;
+}
+
+
+// =====================================================
+// AES-GCM
+// =====================================================
+
+async function deriveKey(
+    password,
+    salt
+) {
+
+    const enc =
+        new TextEncoder();
+
+    const keyMaterial =
+        await crypto.subtle.importKey(
+            "raw",
+            enc.encode(password),
+            "PBKDF2",
+            false,
+            ["deriveKey"]
+        );
+
+    return crypto.subtle.deriveKey(
+        {
+            name: "PBKDF2",
+            salt: salt,
+            iterations: 100000,
+            hash: "SHA-256"
+        },
+        keyMaterial,
+        {
+            name: "AES-GCM",
+            length: 256
+        },
+        false,
+        [
+            "encrypt",
+            "decrypt"
+        ]
+    );
+}
+
+
+async function encrypt(
+    text,
+    password
+) {
+
+    const enc =
+        new TextEncoder();
+
+    const salt =
+        crypto.getRandomValues(
+            new Uint8Array(16)
+        );
+
+    const iv =
+        crypto.getRandomValues(
+            new Uint8Array(12)
+        );
+
+    const key =
+        await deriveKey(
+            password,
+            salt
+        );
+
+    const ciphertext =
+        await crypto.subtle.encrypt(
+            {
+                name: "AES-GCM",
+                iv: iv
+            },
+            key,
+            enc.encode(text)
+        );
+
+    return PREFIX +
+        ab2b64(salt) +
+        ":" +
+        ab2b64(iv) +
+        ":" +
+        ab2b64(ciphertext);
+}
+
+
+async function decrypt(
+    data,
+    password
+) {
+
+    if (
+        !data.startsWith(PREFIX)
+    ) {
+        return null;
+    }
+
+    try {
+
+        const parts =
+            data
+                .slice(PREFIX.length)
+                .split(":");
+
+        if (
+            parts.length !== 3
+        ) {
+            return null;
+        }
+
+        const salt =
+            b642ab(parts[0]);
+
+        const iv =
+            b642ab(parts[1]);
+
+        const ciphertext =
+            b642ab(parts[2]);
+
+        const key =
+            await deriveKey(
+                password,
+                salt
+            );
+
+        const decrypted =
+            await crypto.subtle.decrypt(
+                {
+                    name: "AES-GCM",
+                    iv: iv
+                },
+                key,
+                ciphertext
+            );
+
+        return new TextDecoder()
+            .decode(decrypted);
+
+    } catch {
+
+        return null;
+    }
+}
+
+
+// =====================================================
+// VARIABLES
+// =====================================================
+
+let tempPassword = "";
+
+const textarea =
+    document.getElementById(
+        "input"
+    );
+
+const fileInput =
+    document.getElementById(
+        "fileInput"
+    );
+
+
+// =====================================================
+// TECLADO
+// =====================================================
+
+textarea.addEventListener(
+    "keydown",
+    function(e) {
+
+        if (
+            e.key !== "Enter"
+        ) {
+            return;
+        }
+
+        const text =
+            textarea.value;
+
+        if (!text) {
+            return;
+        }
+
+
+        // + = archivo
+
+        if (text === "+") {
+
+            e.preventDefault();
+
+            textarea.value = "";
+
+            fileInput.click();
+
+            return;
+        }
+
+
+        // @contraseña
+
+        if (
+            text.startsWith("@")
+        ) {
+
+            e.preventDefault();
+
+            tempPassword =
+                text.slice(1);
+
+            textarea.value = "";
+
+            return;
+        }
+    }
+);
+
+
+// =====================================================
+// SUBIR A R2
+// =====================================================
+
+fileInput.addEventListener(
+    "change",
+    async function() {
+
+        if (
+            !fileInput.files.length
+        ) {
+            return;
+        }
+
+        const file =
+            fileInput.files[0];
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "file",
+            file
+        );
+
+        try {
+
+            const res =
+                await fetch(
+                    "/upload",
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+            const json =
+                await res.json();
+
+            if (
+                json.success
+            ) {
+
+                textarea.value =
+                    json.url;
+
+                try {
+
+                    await navigator
+                        .clipboard
+                        .writeText(
+                            json.url
+                        );
+
+                } catch {}
+
+            } else {
+
+                console.error(
+                    "Error:",
+                    json.error
+                );
+            }
+
+        } catch (e) {
+
+            console.error(
+                "Error subiendo:",
+                e
+            );
+        }
+
+        fileInput.value = "";
+
+        mostrarR2();
+    }
+);
+
+
+// =====================================================
+// CIFRAR / DESENCRIPTAR
+// =====================================================
+
+textarea.addEventListener(
+    "keydown",
+    async function(e) {
+
+        if (
+            e.key !== "Enter"
+        ) {
+            return;
+        }
+
+        const text =
+            textarea.value;
+
+        if (!text) {
+            return;
+        }
+
+        if (
+            text === "+"
+        ) {
+            return;
+        }
+
+        if (
+            text.startsWith("@")
+        ) {
+            return;
+        }
+
+        e.preventDefault();
+
+        if (!tempPassword) {
+            return;
+        }
+
+
+        // DESENCRIPTAR
+
+        if (
+            text.startsWith(
+                PREFIX
+            )
+        ) {
+
+            const decrypted =
+                await decrypt(
+                    text,
+                    tempPassword
+                );
+
+            if (!decrypted) {
+                return;
+            }
+
+            textarea.value =
+                decrypted;
+
+            try {
+
+                await navigator
+                    .clipboard
+                    .writeText(
+                        decrypted
+                    );
+
+            } catch {}
+
+        }
+
+
+        // ENCRIPTAR
+
+        else {
+
+            const encrypted =
+                await encrypt(
+                    text,
+                    tempPassword
+                );
+
+            textarea.value = "";
+
+            try {
+
+                await navigator
+                    .clipboard
+                    .writeText(
+                        encrypted
+                    );
+
+            } catch {}
+        }
+    }
+);
+
+
+// =====================================================
+// LISTAR R2
+// =====================================================
+
+async function mostrarR2() {
+
+    const listEl =
+        document.getElementById(
+            "r2List"
+        );
+
+    listEl.innerHTML = "";
+
+    try {
+
+        const res =
+            await fetch(
+                "/files"
+            );
+
+        if (
+            !res.ok
+        ) {
+            return;
+        }
+
+        const data =
+            await res.json();
+
+        if (
+            !data.files ||
+            !data.files.length
+        ) {
+            return;
+        }
+
+        data.files.forEach(
+            function(f) {
+
+                const li =
+                    document.createElement(
+                        "li"
+                    );
+
+                const a =
+                    document.createElement(
+                        "a"
+                    );
+
+                a.href =
+                    "/f/" +
+                    encodeURIComponent(
+                        f.key
+                    );
+
+                a.target =
+                    "_blank";
+
+                a.textContent =
+                    f.key;
+
+                li.appendChild(a);
+
+                listEl.appendChild(
+                    li
+                );
+            }
+        );
+
+    } catch {}
+}
+
+
+// =====================================================
+// MOSTRAR / OCULTAR
+// =====================================================
+
+textarea.addEventListener(
+    "input",
+    function() {
+
+        const visible =
+            textarea.value
+                .startsWith("*");
+
+        document.getElementById(
+            "r2List"
+        ).style.display =
+            visible
+                ? "block"
+                : "none";
+    }
+);
+
+
+mostrarR2();
+
+</script>
+
+</body>
+</html>`;
+
+
+// =====================================================
+// SESIONES
+// =====================================================
+
+const COOKIE_NAME = "nubesession";
+
+
+function bytesToHex(bytes) {
+
+    return Array.from(
+        bytes,
+        b =>
+            b.toString(16)
+             .padStart(2, "0")
+    ).join("");
+}
+
+
+function hexToBytes(hex) {
+
+    const bytes =
+        new Uint8Array(
+            hex.length / 2
+        );
+
+    for (
+        let i = 0;
+        i < bytes.length;
+        i++
+    ) {
+
+        bytes[i] =
+            parseInt(
+                hex.substr(
+                    i * 2,
+                    2
+                ),
+                16
+            );
+    }
+
+    return bytes;
+}
+
+
+async function getKey(
+    secret
+) {
+
+    return crypto.subtle.importKey(
+        "raw",
+        new TextEncoder()
+            .encode(secret),
+        {
+            name: "HMAC",
+            hash: "SHA-256"
+        },
+        false,
+        [
+            "sign",
+            "verify"
+        ]
+    );
+}
+
+
+async function createSession(
+    secret
+) {
+
+    const random =
+        crypto.getRandomValues(
+            new Uint8Array(32)
+        );
+
+    const value =
+        bytesToHex(random);
+
+    const key =
+        await getKey(secret);
+
+    const signature =
+        await crypto.subtle.sign(
+            "HMAC",
+            key,
+            new TextEncoder()
+                .encode(value)
+        );
+
+    return (
+        value +
+        "." +
+        bytesToHex(
+            new Uint8Array(
+                signature
+            )
+        )
+    );
+}
+
+
+async function validSession(
+    session,
+    secret
+) {
+
+    if (!session) {
+        return false;
+    }
+
+    const parts =
+        session.split(".");
+
+    if (
+        parts.length !== 2
+    ) {
+        return false;
+    }
+
+    const value =
+        parts[0];
+
+    const signature =
+        parts[1];
+
+    if (
+        value.length !== 64 ||
+        signature.length !== 64
+    ) {
+        return false;
+    }
+
+    try {
+
+        const key =
+            await getKey(secret);
+
+        return await crypto.subtle.verify(
+            "HMAC",
+            key,
+            hexToBytes(signature),
+            new TextEncoder()
+                .encode(value)
+        );
+
+    } catch {
+
+        return false;
+    }
+}
+
+
+function getSession(
+    request
+) {
+
+    const cookie =
+        request.headers.get(
+            "Cookie"
+        ) || "";
+
+    for (
+        const part of
+        cookie.split(";")
+    ) {
+
+        const trimmed =
+            part.trim();
+
+        if (
+            trimmed.startsWith(
+                COOKIE_NAME + "="
+            )
+        ) {
+
+            return trimmed.slice(
+                COOKIE_NAME.length + 1
+            );
+        }
+    }
+
+    return null;
+}
+
+
+// =====================================================
+// LOGIN
+// =====================================================
+
+async function handleLogin(
+    request,
+    env
+) {
+
+    if (!env.PASSNUBE) {
+
+        return new Response(
+            "PASSNUBE no está configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const form =
+        await request.formData();
+
+    const password =
+        form.get("password");
+
+    if (
+        typeof password !== "string" ||
+        password !== env.PASSNUBE
+    ) {
+
+        return new Response(
+            LOGIN_HTML,
+            {
+                status: 401,
+                headers: {
+                    "Content-Type":
+                        "text/html;charset=UTF-8"
+                }
+            }
+        );
+    }
+
+    const session =
+        await createSession(
+            env.PASSNUBE
+        );
+
+    return new Response(
+        null,
+        {
+            status: 302,
+            headers: {
+
+                "Location": "/",
+
+                "Set-Cookie":
+                    `${COOKIE_NAME}=${session}; ` +
+                    `Path=/; ` +
+                    `HttpOnly; ` +
+                    `Secure; ` +
+                    `SameSite=Strict`
+            }
+        }
+    );
+}
+
+
+// =====================================================
+// SESIÓN
+// =====================================================
+
+async function requireLogin(
+    request,
+    env
+) {
+
+    if (!env.PASSNUBE) {
+        return false;
+    }
+
+    const session =
+        getSession(request);
+
+    return await validSession(
+        session,
+        env.PASSNUBE
+    );
+}
+
+
+// =====================================================
+// R2 UPLOAD
+// =====================================================
+
+async function handleUpload(
+    request,
+    env
+) {
+
+    if (!env.MY_BUCKET) {
+
+        return new Response(
+            JSON.stringify({
+                success: false,
+                error:
+                    "MY_BUCKET no configurado."
+            }),
+            {
+                status: 500,
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+
+    try {
+
+        const formData =
+            await request.formData();
+
+        const file =
+            formData.get("file");
+
+        if (!file) {
+
+            return new Response(
+                JSON.stringify({
+                    success: false,
+                    error:
+                        "No se recibió archivo."
+                }),
+                {
+                    status: 400,
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    }
+                }
+            );
+        }
+
+        const key =
+            file.name;
+
+        await env.MY_BUCKET.put(
+            key,
+            file.stream(),
+            {
+                httpMetadata: {
+                    contentType:
+                        file.type ||
+                        "application/octet-stream"
+                }
+            }
+        );
+
+        return new Response(
+            JSON.stringify({
+                success: true,
+                key: key,
+                url:
+                    "/f/" +
+                    encodeURIComponent(key)
+            }),
+            {
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        return new Response(
+            JSON.stringify({
+                success: false,
+                error: err.message
+            }),
+            {
+                status: 500,
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// R2 LIST
+// =====================================================
+
+async function handleFiles(
+    env
+) {
+
+    if (!env.MY_BUCKET) {
+
+        return new Response(
+            JSON.stringify({
+                files: []
+            }),
+            {
+                status: 500,
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+
+    try {
+
+        const listed =
+            await env.MY_BUCKET.list();
+
+        const files =
+            listed.objects.map(
+                obj => ({
+                    key: obj.key,
+                    size: obj.size
+                })
+            );
+
+        return new Response(
+            JSON.stringify({
+                files: files
+            }),
+            {
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        return new Response(
+            JSON.stringify({
+                files: [],
+                error: err.message
+            }),
+            {
+                status: 500,
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// R2 DOWNLOAD
+// =====================================================
+
+async function handleFile(
+    request,
+    env
+) {
+
+    if (!env.MY_BUCKET) {
+
+        return new Response(
+            "MY_BUCKET no configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const url =
+        new URL(request.url);
+
+    const key =
+        decodeURIComponent(
+            url.pathname.slice(3)
+        );
+
+    if (!key) {
+
+        return new Response(
+            "Archivo no especificado.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    try {
+
+        const object =
+            await env.MY_BUCKET.get(
+                key
+            );
+
+        if (!object) {
+
+            return new Response(
+                "Archivo no encontrado.",
+                {
+                    status: 404
+                }
+            );
+        }
+
+        const headers =
+            new Headers();
+
+        object.writeHttpMetadata(
+            headers
+        );
+
+        headers.set(
+            "Cache-Control",
+            "private, no-store"
+        );
+
+        return new Response(
+            object.body,
+            {
+                headers: headers
+            }
+        );
+
+    } catch (err) {
+
+        return new Response(
+            "Error leyendo archivo.",
+            {
+                status: 500
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// WORKER
+// =====================================================
+
+export default {
+
+    async fetch(
+        request,
+        env
+    ) {
+
+        const url =
+            new URL(request.url);
+
+
+        // LOGIN
+
+        if (
+            url.pathname === "/login" &&
+            request.method === "POST"
+        ) {
+
+            return handleLogin(
+                request,
+                env
+            );
+        }
+
+
+        // SESIÓN
+
+        const authenticated =
+            await requireLogin(
+                request,
+                env
+            );
+
+
+        if (!authenticated) {
+
+            return new Response(
+                LOGIN_HTML,
+                {
+                    status: 401,
+                    headers: {
+                        "Content-Type":
+                            "text/html;charset=UTF-8"
+                    }
+                }
+            );
+        }
+
+
+        // APP
+
+        if (
+            url.pathname === "/" &&
+            request.method === "GET"
+        ) {
+
+            return new Response(
+                APP_HTML,
+                {
+                    headers: {
+                        "Content-Type":
+                            "text/html;charset=UTF-8"
+                    }
+                }
+            );
+        }
+
+
+        // UPLOAD
+
+        if (
+            url.pathname === "/upload" &&
+            request.method === "POST"
+        ) {
+
+            return handleUpload(
+                request,
+                env
+            );
+        }
+
+
+        // FILES
+
+        if (
+            url.pathname === "/files" &&
+            request.method === "GET"
+        ) {
+
+            return handleFiles(
+                env
+            );
+        }
+
+
+        // FILE
+
+        if (
+            url.pathname.startsWith(
+                "/f/"
+            ) &&
+            request.method === "GET"
+        ) {
+
+            return handleFile(
+                request,
+                env
+            );
+        }
+
+
+        return new Response(
+            "No encontrado.",
+            {
+                status: 404
+            }
+        );
+    }
+};
