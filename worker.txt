@@ -1,0 +1,2448 @@
+// =====================================================
+// NUBE PUBLICA + PAPA MONO
+// =====================================================
+//
+// R2 binding:
+//   PUBLIC_BUCKET -> rd103
+//
+// Secret:
+//   UPLOAD_PASSWORD
+//
+// KV opcional:
+//   MY_DATA_KV
+//
+// PUBLICO:
+//   /       -> listado
+//   /files  -> listado JSON
+//   /f/...  -> archivo
+//
+// ADMIN:
+//   /admin
+//   /upload
+//   /f/... DELETE
+//   /edit/... GET/PUT
+// =====================================================
+
+
+// =====================================================
+// HTML LOGIN
+// =====================================================
+
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title>
+
+<style>
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: sans-serif;
+}
+
+input {
+    width: 120px;
+    height: 20px;
+    padding: 5px;
+    border: 1px solid #ccc;
+    outline: none;
+}
+</style>
+</head>
+
+<body>
+
+<form method="POST" action="/admin/login">
+
+<input
+    type="password"
+    name="password"
+    autocomplete="current-password"
+    autofocus
+>
+
+</form>
+
+</body>
+</html>`;
+
+
+const LOGIN_ERROR_HTML = LOGIN_HTML.replace(
+    '<form method="POST" action="/admin/login">',
+    '<p>Clave incorrecta.</p><form method="POST" action="/admin/login">'
+);
+
+
+// =====================================================
+// HTML PUBLICO
+// =====================================================
+
+const PUBLIC_HTML = `<!DOCTYPE html>
+<html lang="es">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Nube</title>
+
+<style>
+
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: sans-serif;
+}
+
+#list {
+    margin-top: 10px;
+    padding: 0;
+    list-style: none;
+    width: max-content;
+    max-width: 90vw;
+}
+
+#list li {
+    margin-bottom: 4px;
+    font-family: monospace;
+    white-space: nowrap;
+}
+
+#list a {
+    color: inherit;
+    text-decoration: none;
+}
+
+#list a:hover {
+    text-decoration: underline;
+}
+
+</style>
+</head>
+
+<body>
+
+<ul id="list"></ul>
+
+<script>
+
+async function cargarArchivos() {
+
+    const list =
+        document.getElementById("list");
+
+    list.innerHTML = "";
+
+    try {
+
+        const res =
+            await fetch("/files", {
+                cache: "no-store"
+            });
+
+        const data =
+            await res.json();
+
+        if (!res.ok) {
+
+            throw new Error(
+                data.error ||
+                "HTTP " + res.status
+            );
+        }
+
+        if (
+            !data.files ||
+            !data.files.length
+        ) {
+            return;
+        }
+
+        data.files.forEach(function(file) {
+
+            const li =
+                document.createElement("li");
+
+            const a =
+                document.createElement("a");
+
+            a.href =
+                "/f/" +
+                encodeURIComponent(file.key);
+
+            a.target =
+                "_blank";
+
+            a.textContent =
+                file.key;
+
+            li.appendChild(a);
+
+            list.appendChild(li);
+        });
+
+    } catch (err) {
+
+        console.error(
+            "Error cargando archivos:",
+            err
+        );
+
+        list.textContent =
+            "Error cargando archivos.";
+    }
+}
+
+cargarArchivos();
+
+</script>
+
+</body>
+</html>`;
+
+
+// =====================================================
+// HTML ADMIN
+// =====================================================
+
+const ADMIN_HTML = `<!DOCTYPE html>
+<html lang="es">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Nube</title>
+
+<style>
+
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: sans-serif;
+}
+
+#input {
+    width: 10%;
+    min-width: 3px;
+    height: 20px;
+    padding: 5px;
+    resize: none;
+    border: 1px solid #ccc;
+    outline: none;
+}
+
+#fileInput {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+#list {
+    margin-top: 10px;
+    padding: 0;
+    list-style: none;
+    width: max-content;
+    max-width: 90vw;
+}
+
+#list li {
+    margin-bottom: 4px;
+    font-family: monospace;
+    white-space: nowrap;
+}
+
+#list button {
+    width: 22px;
+    height: 18px;
+    padding: 0;
+    margin: 0 5px 0 0;
+
+    border: 1px solid #ccc;
+    border-radius: 3px;
+
+    background: #f5f5f5;
+    color: #555;
+
+    font-size: 15px;
+    line-height: 16px;
+
+    cursor: pointer;
+}
+
+#list button:hover {
+    background: #e9e9e9;
+}
+
+#list button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#list a {
+    color: inherit;
+    text-decoration: none;
+}
+
+#list a:hover {
+    text-decoration: underline;
+}
+
+</style>
+</head>
+
+<body>
+
+<textarea id="input"></textarea>
+
+<input
+    type="file"
+    id="fileInput"
+>
+
+<ul id="list"></ul>
+
+<script>
+
+const input =
+    document.getElementById("input");
+
+const fileInput =
+    document.getElementById("fileInput");
+
+
+// =====================================================
+// TECLADO
+// =====================================================
+
+input.addEventListener(
+    "keydown",
+    async function(e) {
+
+        if (e.key !== "Enter") {
+            return;
+        }
+
+        const text =
+            input.value.trim();
+
+
+        // -------------------------------------------------
+        // +
+        // -------------------------------------------------
+
+        if (text === "+") {
+
+            e.preventDefault();
+
+            input.value = "";
+
+            fileInput.click();
+
+            return;
+        }
+
+
+        // -------------------------------------------------
+        // --
+        // -------------------------------------------------
+
+        if (text === "--") {
+
+            e.preventDefault();
+
+            input.value = "";
+
+            try {
+
+                await fetch(
+                    "/admin/logout",
+                    {
+                        method: "POST",
+                        credentials: "same-origin"
+                    }
+                );
+
+            } catch {}
+
+            location.href =
+                "/admin";
+
+            return;
+        }
+
+
+        // -------------------------------------------------
+        // *
+        // -------------------------------------------------
+
+        if (text === "*") {
+
+            e.preventDefault();
+
+            input.value = "";
+
+            await cargarArchivos();
+
+            return;
+        }
+    }
+);
+
+
+// =====================================================
+// SUBIR
+// =====================================================
+
+fileInput.addEventListener(
+    "change",
+    async function() {
+
+        if (!fileInput.files.length) {
+            return;
+        }
+
+        const file =
+            fileInput.files[0];
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "file",
+            file
+        );
+
+        try {
+
+            const res =
+                await fetch(
+                    "/upload",
+                    {
+                        method: "POST",
+                        credentials: "same-origin",
+                        body: formData
+                    }
+                );
+
+            const data =
+                await res.json();
+
+            if (!res.ok || !data.success) {
+
+                console.error(
+                    "Error subiendo:",
+                    data
+                );
+
+                return;
+            }
+
+            input.value =
+                data.url;
+
+            try {
+
+                await navigator.clipboard.writeText(
+                    data.url
+                );
+
+            } catch {}
+
+            await cargarArchivos();
+
+        } catch (err) {
+
+            console.error(
+                "Error subiendo archivo:",
+                err
+            );
+        }
+
+        fileInput.value = "";
+    }
+);
+
+
+// =====================================================
+// LISTAR
+// =====================================================
+
+async function cargarArchivos() {
+
+    const list =
+        document.getElementById("list");
+
+    list.innerHTML = "";
+
+    try {
+
+        const res =
+            await fetch(
+                "/files",
+                {
+                    credentials:
+                        "same-origin",
+
+                    cache:
+                        "no-store"
+                }
+            );
+
+        const data =
+            await res.json();
+
+        if (!res.ok) {
+
+            throw new Error(
+                data.error ||
+                "HTTP " + res.status
+            );
+        }
+
+        if (
+            !data.files ||
+            !data.files.length
+        ) {
+            return;
+        }
+
+        data.files.forEach(
+            function(file) {
+
+                const li =
+                    document.createElement("li");
+
+
+                // -----------------------------------------
+                // BORRAR
+                // -----------------------------------------
+
+                const deleteButton =
+                    document.createElement("button");
+
+                deleteButton.type =
+                    "button";
+
+                deleteButton.textContent =
+                    "×";
+
+                deleteButton.onclick =
+                    async function(e) {
+
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const ok =
+                            confirm(
+                                "¿Borrar este archivo?\\n\\n" +
+                                file.key
+                            );
+
+                        if (!ok) {
+                            return;
+                        }
+
+                        try {
+
+                            const res =
+                                await fetch(
+                                    "/f/" +
+                                    encodeURIComponent(
+                                        file.key
+                                    ),
+                                    {
+                                        method: "DELETE",
+                                        credentials:
+                                            "same-origin"
+                                    }
+                                );
+
+                            if (!res.ok) {
+
+                                console.error(
+                                    "Error DELETE:",
+                                    res.status
+                                );
+
+                                return;
+                            }
+
+                            await cargarArchivos();
+
+                        } catch (err) {
+
+                            console.error(
+                                "Error borrando:",
+                                err
+                            );
+                        }
+                    };
+
+                li.appendChild(
+                    deleteButton
+                );
+
+
+                // -----------------------------------------
+                // EDITAR TXT
+                // -----------------------------------------
+
+                const editButton =
+                    document.createElement("button");
+
+                editButton.type =
+                    "button";
+
+                editButton.textContent =
+                    "✎";
+
+                if (
+                    file.key
+                        .toLowerCase()
+                        .endsWith(".txt")
+                ) {
+
+                    editButton.onclick =
+                        function(e) {
+
+                            e.preventDefault();
+                            e.stopPropagation();
+
+                            window.open(
+                                "/edit/" +
+                                encodeURIComponent(
+                                    file.key
+                                ),
+                                "_blank"
+                            );
+                        };
+
+                } else {
+
+                    editButton.disabled =
+                        true;
+                }
+
+                li.appendChild(
+                    editButton
+                );
+
+
+                // -----------------------------------------
+                // ARCHIVO
+                // -----------------------------------------
+
+                const a =
+                    document.createElement("a");
+
+                a.href =
+                    "/f/" +
+                    encodeURIComponent(
+                        file.key
+                    );
+
+                a.target =
+                    "_blank";
+
+                a.textContent =
+                    file.key;
+
+                li.appendChild(a);
+
+                list.appendChild(li);
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "Error cargando archivos:",
+            err
+        );
+
+        list.textContent =
+            "Error cargando archivos.";
+    }
+}
+
+
+// =====================================================
+// INICIO
+// =====================================================
+
+cargarArchivos();
+
+</script>
+
+</body>
+</html>`;
+
+
+// =====================================================
+// EDITOR TXT
+// =====================================================
+
+function escapeHtml(text) {
+
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+function EDITOR_HTML(filename, content) {
+
+    return `<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>${escapeHtml(filename)}</title>
+
+<style>
+
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: sans-serif;
+}
+
+#top {
+    margin-bottom: 10px;
+}
+
+#editor {
+    display: block;
+
+    width: 100%;
+    min-height: 70vh;
+
+    box-sizing: border-box;
+
+    resize: vertical;
+
+    padding: 10px;
+
+    font-family: monospace;
+    font-size: 14px;
+    line-height: 1.4;
+
+    background: #fff;
+    color: #000;
+
+    border: 1px solid #ccc;
+    outline: none;
+}
+
+button {
+    padding: 6px 12px;
+
+    border: 1px solid #ccc;
+
+    background: #f5f5f5;
+    color: #000;
+
+    cursor: pointer;
+}
+
+#status {
+    margin-left: 10px;
+    font-family: monospace;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="top">
+
+<button
+    type="button"
+    onclick="guardar()"
+>
+Guardar
+</button>
+
+<span id="status"></span>
+
+</div>
+
+<textarea id="editor"></textarea>
+
+<script>
+
+const editor =
+    document.getElementById("editor");
+
+const status =
+    document.getElementById("status");
+
+editor.value =
+    ${JSON.stringify(content)};
+
+
+async function guardar() {
+
+    status.textContent =
+        "Guardando...";
+
+    try {
+
+        const res =
+            await fetch(
+                window.location.pathname,
+                {
+                    method: "PUT",
+
+                    headers: {
+                        "Content-Type":
+                            "text/plain; charset=utf-8"
+                    },
+
+                    credentials:
+                        "same-origin",
+
+                    body:
+                        editor.value
+                }
+            );
+
+        if (!res.ok) {
+
+            status.textContent =
+                "Error al guardar.";
+
+            return;
+        }
+
+        status.textContent =
+            "Guardado.";
+
+        setTimeout(
+            function() {
+
+                status.textContent =
+                    "";
+
+            },
+            1500
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+        status.textContent =
+            "Error al guardar.";
+    }
+}
+
+</script>
+
+</body>
+</html>`;
+}
+
+
+// =====================================================
+// SESIONES
+// =====================================================
+
+const COOKIE_NAME =
+    "papamono_session";
+
+const SESSION_MAX_AGE =
+    5 * 60 * 1000;
+
+
+// =====================================================
+// UTILIDADES CRYPTO
+// =====================================================
+
+function bytesToHex(bytes) {
+
+    return Array.from(
+        bytes,
+        function(b) {
+            return b
+                .toString(16)
+                .padStart(2, "0");
+        }
+    ).join("");
+}
+
+
+function hexToBytes(hex) {
+
+    const bytes =
+        new Uint8Array(
+            hex.length / 2
+        );
+
+    for (
+        let i = 0;
+        i < bytes.length;
+        i++
+    ) {
+
+        bytes[i] =
+            parseInt(
+                hex.substr(i * 2, 2),
+                16
+            );
+    }
+
+    return bytes;
+}
+
+
+async function getKey(secret) {
+
+    return crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(secret),
+        {
+            name: "HMAC",
+            hash: "SHA-256"
+        },
+        false,
+        [
+            "sign",
+            "verify"
+        ]
+    );
+}
+
+
+async function createSession(secret) {
+
+    const random =
+        crypto.getRandomValues(
+            new Uint8Array(32)
+        );
+
+    const timestamp =
+        Date.now().toString();
+
+    const randomHex =
+        bytesToHex(random);
+
+    const value =
+        timestamp +
+        "." +
+        randomHex;
+
+    const key =
+        await getKey(secret);
+
+    const signature =
+        await crypto.subtle.sign(
+            "HMAC",
+            key,
+            new TextEncoder().encode(value)
+        );
+
+    return (
+        value +
+        "." +
+        bytesToHex(
+            new Uint8Array(signature)
+        )
+    );
+}
+
+
+async function validSession(
+    session,
+    secret
+) {
+
+    if (!session) {
+        return false;
+    }
+
+    const parts =
+        session.split(".");
+
+    if (parts.length !== 3) {
+        return false;
+    }
+
+    const timestamp =
+        Number(parts[0]);
+
+    const random =
+        parts[1];
+
+    const signature =
+        parts[2];
+
+    if (
+        !Number.isFinite(timestamp) ||
+        random.length !== 64 ||
+        signature.length !== 64
+    ) {
+        return false;
+    }
+
+    if (
+        Date.now() - timestamp >
+        SESSION_MAX_AGE
+    ) {
+        return false;
+    }
+
+    try {
+
+        const value =
+            timestamp +
+            "." +
+            random;
+
+        const key =
+            await getKey(secret);
+
+        return await crypto.subtle.verify(
+            "HMAC",
+            key,
+            hexToBytes(signature),
+            new TextEncoder().encode(value)
+        );
+
+    } catch {
+
+        return false;
+    }
+}
+
+
+function getSession(request) {
+
+    const cookie =
+        request.headers.get("Cookie") || "";
+
+    for (
+        const part of cookie.split(";")
+    ) {
+
+        const trimmed =
+            part.trim();
+
+        if (
+            trimmed.startsWith(
+                COOKIE_NAME + "="
+            )
+        ) {
+
+            return trimmed.slice(
+                COOKIE_NAME.length + 1
+            );
+        }
+    }
+
+    return null;
+}
+
+
+async function requireAdmin(
+    request,
+    env
+) {
+
+    if (!env.UPLOAD_PASSWORD) {
+        return false;
+    }
+
+    return await validSession(
+        getSession(request),
+        env.UPLOAD_PASSWORD
+    );
+}
+
+
+// =====================================================
+// RATE LIMIT LOGIN
+// =====================================================
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_SECONDS = 60;
+const LOGIN_BLOCK_SECONDS = 600;
+
+
+async function checkLoginRateLimit(
+    request,
+    env
+) {
+
+    if (!env.MY_DATA_KV) {
+        return {
+            allowed: true
+        };
+    }
+
+    const ip =
+        request.headers.get(
+            "CF-Connecting-IP"
+        ) || "unknown";
+
+    const key =
+        "admin_rl:" + ip;
+
+    try {
+
+        const current =
+            await env.MY_DATA_KV.get(
+                key,
+                {
+                    type: "json"
+                }
+            );
+
+        const now =
+            Date.now();
+
+        if (
+            current &&
+            current.blockedUntil &&
+            now < current.blockedUntil
+        ) {
+
+            return {
+                allowed: false,
+
+                retryAfter:
+                    Math.ceil(
+                        (
+                            current.blockedUntil -
+                            now
+                        ) / 1000
+                    )
+            };
+        }
+
+        if (
+            !current ||
+            !current.startedAt ||
+            now -
+            current.startedAt >=
+            LOGIN_WINDOW_SECONDS * 1000
+        ) {
+
+            await env.MY_DATA_KV.put(
+                key,
+                JSON.stringify({
+                    attempts: 0,
+                    startedAt: now
+                }),
+                {
+                    expirationTtl:
+                        LOGIN_WINDOW_SECONDS
+                }
+            );
+
+            return {
+                allowed: true
+            };
+        }
+
+        if (
+            current.attempts >=
+            MAX_LOGIN_ATTEMPTS
+        ) {
+
+            const blockedUntil =
+                now +
+                LOGIN_BLOCK_SECONDS * 1000;
+
+            await env.MY_DATA_KV.put(
+                key,
+                JSON.stringify({
+                    attempts:
+                        current.attempts,
+
+                    startedAt:
+                        current.startedAt,
+
+                    blockedUntil:
+                        blockedUntil
+                }),
+                {
+                    expirationTtl:
+                        LOGIN_BLOCK_SECONDS
+                }
+            );
+
+            return {
+                allowed: false,
+
+                retryAfter:
+                    LOGIN_BLOCK_SECONDS
+            };
+        }
+
+        return {
+            allowed: true
+        };
+
+    } catch {
+
+        return {
+            allowed: true
+        };
+    }
+}
+
+
+async function registerFailedLogin(
+    request,
+    env
+) {
+
+    if (!env.MY_DATA_KV) {
+        return;
+    }
+
+    const ip =
+        request.headers.get(
+            "CF-Connecting-IP"
+        ) || "unknown";
+
+    const key =
+        "admin_rl:" + ip;
+
+    try {
+
+        const current =
+            await env.MY_DATA_KV.get(
+                key,
+                {
+                    type: "json"
+                }
+            );
+
+        const now =
+            Date.now();
+
+        let attempts = 1;
+        let startedAt = now;
+
+        if (
+            current &&
+            current.startedAt &&
+            now -
+            current.startedAt <
+            LOGIN_WINDOW_SECONDS * 1000
+        ) {
+
+            attempts =
+                (current.attempts || 0) + 1;
+
+            startedAt =
+                current.startedAt;
+        }
+
+        const data = {
+            attempts:
+                attempts,
+
+            startedAt:
+                startedAt
+        };
+
+        if (
+            attempts >=
+            MAX_LOGIN_ATTEMPTS
+        ) {
+
+            data.blockedUntil =
+                now +
+                LOGIN_BLOCK_SECONDS * 1000;
+
+            await env.MY_DATA_KV.put(
+                key,
+                JSON.stringify(data),
+                {
+                    expirationTtl:
+                        LOGIN_BLOCK_SECONDS
+                }
+            );
+
+        } else {
+
+            await env.MY_DATA_KV.put(
+                key,
+                JSON.stringify(data),
+                {
+                    expirationTtl:
+                        LOGIN_WINDOW_SECONDS
+                }
+            );
+        }
+
+    } catch {}
+}
+
+
+async function clearLoginRateLimit(
+    request,
+    env
+) {
+
+    if (!env.MY_DATA_KV) {
+        return;
+    }
+
+    const ip =
+        request.headers.get(
+            "CF-Connecting-IP"
+        ) || "unknown";
+
+    try {
+
+        await env.MY_DATA_KV.delete(
+            "admin_rl:" + ip
+        );
+
+    } catch {}
+}
+
+
+// =====================================================
+// LOGIN
+// =====================================================
+
+async function handleAdminLogin(
+    request,
+    env
+) {
+
+    if (!env.UPLOAD_PASSWORD) {
+
+        return new Response(
+            "UPLOAD_PASSWORD no está configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const rate =
+        await checkLoginRateLimit(
+            request,
+            env
+        );
+
+    if (!rate.allowed) {
+
+        return new Response(
+            LOGIN_HTML,
+            {
+                status: 429,
+
+                headers: {
+                    "Content-Type":
+                        "text/html;charset=UTF-8",
+
+                    "Retry-After":
+                        String(
+                            rate.retryAfter
+                        )
+                }
+            }
+        );
+    }
+
+    const form =
+        await request.formData();
+
+    const password =
+        form.get("password");
+
+    if (
+        typeof password !== "string" ||
+        password !== env.UPLOAD_PASSWORD
+    ) {
+
+        await registerFailedLogin(
+            request,
+            env
+        );
+
+        return new Response(
+            LOGIN_ERROR_HTML,
+            {
+                status: 401,
+
+                headers: {
+                    "Content-Type":
+                        "text/html;charset=UTF-8"
+                }
+            }
+        );
+    }
+
+    await clearLoginRateLimit(
+        request,
+        env
+    );
+
+    const session =
+        await createSession(
+            env.UPLOAD_PASSWORD
+        );
+
+    return new Response(
+        null,
+        {
+            status: 302,
+
+            headers: {
+
+                "Location":
+                    "/admin",
+
+                "Set-Cookie":
+                    `${COOKIE_NAME}=${session}; ` +
+                    `Path=/; ` +
+                    `HttpOnly; ` +
+                    `Secure; ` +
+                    `SameSite=Strict; ` +
+                    `Max-Age=300`
+            }
+        }
+    );
+}
+
+
+// =====================================================
+// LOGOUT
+// =====================================================
+
+async function handleAdminLogout() {
+
+    return new Response(
+        null,
+        {
+            status: 204,
+
+            headers: {
+
+                "Set-Cookie":
+                    `${COOKIE_NAME}=; ` +
+                    `Path=/; ` +
+                    `HttpOnly; ` +
+                    `Secure; ` +
+                    `SameSite=Strict; ` +
+                    `Max-Age=0`
+            }
+        }
+    );
+}
+
+
+// =====================================================
+// R2 LIST
+// =====================================================
+
+async function handleFiles(env) {
+
+    if (!env.PUBLIC_BUCKET) {
+
+        return new Response(
+            JSON.stringify({
+                files: [],
+                error:
+                    "PUBLIC_BUCKET no está configurado."
+            }),
+            {
+                status: 500,
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+                    "Cache-Control":
+                        "no-store"
+                }
+            }
+        );
+    }
+
+    try {
+
+        const files = [];
+
+        let cursor = undefined;
+
+        do {
+
+            const options = {
+                limit: 1000
+            };
+
+            if (cursor) {
+                options.cursor = cursor;
+            }
+
+            const listed =
+                await env.PUBLIC_BUCKET.list(
+                    options
+                );
+
+            for (
+                const object of listed.objects
+            ) {
+
+                files.push({
+                    key:
+                        object.key,
+
+                    size:
+                        object.size
+                });
+            }
+
+            cursor =
+                listed.truncated
+                    ? listed.cursor
+                    : undefined;
+
+        } while (cursor);
+
+
+        files.sort(
+            function(a, b) {
+
+                return a.key.localeCompare(
+                    b.key,
+                    undefined,
+                    {
+                        numeric: true
+                    }
+                );
+            }
+        );
+
+
+        return new Response(
+            JSON.stringify({
+                files:
+                    files
+            }),
+            {
+                status: 200,
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Cache-Control":
+                        "no-store"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "R2 LIST ERROR",
+            err
+        );
+
+        return new Response(
+            JSON.stringify({
+                files: [],
+
+                error:
+                    err &&
+                    err.message
+                        ? err.message
+                        : String(err)
+            }),
+            {
+                status: 500,
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Cache-Control":
+                        "no-store"
+                }
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// R2 UPLOAD
+// =====================================================
+
+async function handleUpload(
+    request,
+    env
+) {
+
+    if (!env.PUBLIC_BUCKET) {
+
+        return new Response(
+            JSON.stringify({
+                success: false,
+
+                error:
+                    "PUBLIC_BUCKET no está configurado."
+            }),
+            {
+                status: 500,
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+
+    try {
+
+        const formData =
+            await request.formData();
+
+        const file =
+            formData.get("file");
+
+        if (
+            !file ||
+            typeof file.stream !== "function"
+        ) {
+
+            return new Response(
+                JSON.stringify({
+                    success: false,
+
+                    error:
+                        "No se recibió archivo."
+                }),
+                {
+                    status: 400,
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    }
+                }
+            );
+        }
+
+        if (!file.name) {
+
+            return new Response(
+                JSON.stringify({
+                    success: false,
+
+                    error:
+                        "El archivo no tiene nombre."
+                }),
+                {
+                    status: 400,
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    }
+                }
+            );
+        }
+
+        const key =
+            file.name;
+
+        await env.PUBLIC_BUCKET.put(
+            key,
+            file.stream(),
+            {
+                httpMetadata: {
+                    contentType:
+                        file.type ||
+                        "application/octet-stream"
+                }
+            }
+        );
+
+        return new Response(
+            JSON.stringify({
+                success:
+                    true,
+
+                key:
+                    key,
+
+                url:
+                    "/f/" +
+                    encodeURIComponent(key)
+            }),
+            {
+                status: 200,
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Cache-Control":
+                        "no-store"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "R2 UPLOAD ERROR",
+            err
+        );
+
+        return new Response(
+            JSON.stringify({
+                success:
+                    false,
+
+                error:
+                    err &&
+                    err.message
+                        ? err.message
+                        : String(err)
+            }),
+            {
+                status: 500,
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// R2 GET
+// =====================================================
+
+async function handleFile(
+    request,
+    env
+) {
+
+    if (!env.PUBLIC_BUCKET) {
+
+        return new Response(
+            "PUBLIC_BUCKET no está configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const url =
+        new URL(request.url);
+
+    const encodedKey =
+        url.pathname.slice(3);
+
+    if (!encodedKey) {
+
+        return new Response(
+            "Archivo no especificado.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    let key;
+
+    try {
+
+        key =
+            decodeURIComponent(
+                encodedKey
+            );
+
+    } catch {
+
+        return new Response(
+            "Nombre de archivo inválido.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    try {
+
+        const object =
+            await env.PUBLIC_BUCKET.get(
+                key
+            );
+
+        if (!object) {
+
+            return new Response(
+                "Archivo no encontrado.",
+                {
+                    status: 404
+                }
+            );
+        }
+
+        const headers =
+            new Headers();
+
+        object.writeHttpMetadata(
+            headers
+        );
+
+        headers.set(
+            "Content-Type",
+            "text/plain; charset=utf-8"
+        );
+
+        headers.set(
+            "Cache-Control",
+            "public, max-age=0, must-revalidate"
+        );
+
+        return new Response(
+            object.body,
+            {
+                status: 200,
+                headers: headers
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "R2 GET ERROR",
+            err
+        );
+
+        return new Response(
+            "Error leyendo archivo.",
+            {
+                status: 500
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// R2 DELETE
+// =====================================================
+
+async function handleDeleteFile(
+    request,
+    env
+) {
+
+    if (!env.PUBLIC_BUCKET) {
+
+        return new Response(
+            "PUBLIC_BUCKET no está configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const url =
+        new URL(request.url);
+
+    const encodedKey =
+        url.pathname.slice(3);
+
+    if (!encodedKey) {
+
+        return new Response(
+            "Archivo no especificado.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    let key;
+
+    try {
+
+        key =
+            decodeURIComponent(
+                encodedKey
+            );
+
+    } catch {
+
+        return new Response(
+            "Nombre de archivo inválido.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    try {
+
+        await env.PUBLIC_BUCKET.delete(
+            key
+        );
+
+        return new Response(
+            null,
+            {
+                status: 204
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "R2 DELETE ERROR",
+            err
+        );
+
+        return new Response(
+            "Error borrando archivo.",
+            {
+                status: 500
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// EDITAR TXT
+// =====================================================
+
+async function handleEdit(
+    request,
+    env
+) {
+
+    if (!env.PUBLIC_BUCKET) {
+
+        return new Response(
+            "PUBLIC_BUCKET no está configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const url =
+        new URL(request.url);
+
+    const encodedKey =
+        url.pathname.slice(
+            "/edit/".length
+        );
+
+    if (!encodedKey) {
+
+        return new Response(
+            "Archivo no especificado.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    let key;
+
+    try {
+
+        key =
+            decodeURIComponent(
+                encodedKey
+            );
+
+    } catch {
+
+        return new Response(
+            "Nombre de archivo inválido.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    if (
+        !key
+            .toLowerCase()
+            .endsWith(".txt")
+    ) {
+
+        return new Response(
+            "Solo se pueden editar archivos .txt.",
+            {
+                status: 403
+            }
+        );
+    }
+
+    try {
+
+        const object =
+            await env.PUBLIC_BUCKET.get(
+                key
+            );
+
+        if (!object) {
+
+            return new Response(
+                "Archivo no encontrado.",
+                {
+                    status: 404
+                }
+            );
+        }
+
+        const content =
+            await object.text();
+
+        return new Response(
+            EDITOR_HTML(
+                key,
+                content
+            ),
+            {
+                status: 200,
+
+                headers: {
+                    "Content-Type":
+                        "text/html;charset=UTF-8",
+
+                    "Cache-Control":
+                        "private, no-store"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "R2 EDIT ERROR",
+            err
+        );
+
+        return new Response(
+            "Error leyendo archivo.",
+            {
+                status: 500
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// GUARDAR TXT
+// =====================================================
+
+async function handleSaveEdit(
+    request,
+    env
+) {
+
+    if (!env.PUBLIC_BUCKET) {
+
+        return new Response(
+            "PUBLIC_BUCKET no está configurado.",
+            {
+                status: 500
+            }
+        );
+    }
+
+    const url =
+        new URL(request.url);
+
+    const encodedKey =
+        url.pathname.slice(
+            "/edit/".length
+        );
+
+    if (!encodedKey) {
+
+        return new Response(
+            "Archivo no especificado.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    let key;
+
+    try {
+
+        key =
+            decodeURIComponent(
+                encodedKey
+            );
+
+    } catch {
+
+        return new Response(
+            "Nombre de archivo inválido.",
+            {
+                status: 400
+            }
+        );
+    }
+
+    if (
+        !key
+            .toLowerCase()
+            .endsWith(".txt")
+    ) {
+
+        return new Response(
+            "Solo se pueden editar archivos .txt.",
+            {
+                status: 403
+            }
+        );
+    }
+
+    try {
+
+        const content =
+            await request.text();
+
+        await env.PUBLIC_BUCKET.put(
+            key,
+            content,
+            {
+                httpMetadata: {
+                    contentType:
+                        "text/plain; charset=utf-8"
+                }
+            }
+        );
+
+        return new Response(
+            JSON.stringify({
+                success:
+                    true
+            }),
+            {
+                status: 200,
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Cache-Control":
+                        "no-store"
+                }
+            }
+        );
+
+    } catch (err) {
+
+        console.error(
+            "R2 SAVE ERROR",
+            err
+        );
+
+        return new Response(
+            JSON.stringify({
+                success:
+                    false,
+
+                error:
+                    err &&
+                    err.message
+                        ? err.message
+                        : String(err)
+            }),
+            {
+                status: 500,
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                }
+            }
+        );
+    }
+}
+
+
+// =====================================================
+// WORKER
+// =====================================================
+
+export default {
+
+    async fetch(
+        request,
+        env
+    ) {
+
+        const url =
+            new URL(request.url);
+
+
+        // =================================================
+        // LOGIN
+        // =================================================
+
+        if (
+            url.pathname ===
+                "/admin/login" &&
+            request.method === "POST"
+        ) {
+
+            return handleAdminLogin(
+                request,
+                env
+            );
+        }
+
+
+        // =================================================
+        // LOGOUT
+        // =================================================
+
+        if (
+            url.pathname ===
+                "/admin/logout" &&
+            request.method === "POST"
+        ) {
+
+            return handleAdminLogout();
+        }
+
+
+        // =================================================
+        // ADMIN
+        // =================================================
+
+        if (
+            url.pathname ===
+                "/admin" &&
+            request.method === "GET"
+        ) {
+
+            const authenticated =
+                await requireAdmin(
+                    request,
+                    env
+                );
+
+            if (!authenticated) {
+
+                return new Response(
+                    LOGIN_HTML,
+                    {
+                        status: 401,
+
+                        headers: {
+                            "Content-Type":
+                                "text/html;charset=UTF-8",
+
+                            "Cache-Control":
+                                "no-store"
+                        }
+                    }
+                );
+            }
+
+            return new Response(
+                ADMIN_HTML,
+                {
+                    status: 200,
+
+                    headers: {
+                        "Content-Type":
+                            "text/html;charset=UTF-8",
+
+                        "Cache-Control":
+                            "private, no-store"
+                    }
+                }
+            );
+        }
+
+
+        // =================================================
+        // PUBLICO /
+        // =================================================
+
+        if (
+            url.pathname === "/" &&
+            request.method === "GET"
+        ) {
+
+            return new Response(
+                PUBLIC_HTML,
+                {
+                    status: 200,
+
+                    headers: {
+                        "Content-Type":
+                            "text/html;charset=UTF-8",
+
+                        "Cache-Control":
+                            "no-store"
+                    }
+                }
+            );
+        }
+
+
+        // =================================================
+        // PUBLICO /files
+        // =================================================
+
+        if (
+            url.pathname === "/files" &&
+            request.method === "GET"
+        ) {
+
+            return handleFiles(
+                env
+            );
+        }
+
+
+        // =================================================
+        // PUBLICO /f/...
+        // =================================================
+
+        if (
+            url.pathname.startsWith("/f/") &&
+            request.method === "GET"
+        ) {
+
+            return handleFile(
+                request,
+                env
+            );
+        }
+
+
+        // =================================================
+        // DESDE AQUI: SOLO ADMIN
+        // =================================================
+
+        const authenticated =
+            await requireAdmin(
+                request,
+                env
+            );
+
+        if (!authenticated) {
+
+            return new Response(
+                "No autorizado.",
+                {
+                    status: 401
+                }
+            );
+        }
+
+
+        // =================================================
+        // UPLOAD
+        // =================================================
+
+        if (
+            url.pathname === "/upload" &&
+            request.method === "POST"
+        ) {
+
+            return handleUpload(
+                request,
+                env
+            );
+        }
+
+
+        // =================================================
+        // DELETE
+        // =================================================
+
+        if (
+            url.pathname.startsWith("/f/") &&
+            request.method === "DELETE"
+        ) {
+
+            return handleDeleteFile(
+                request,
+                env
+            );
+        }
+
+
+        // =================================================
+        // EDIT GET
+        // =================================================
+
+        if (
+            url.pathname.startsWith("/edit/") &&
+            request.method === "GET"
+        ) {
+
+            return handleEdit(
+                request,
+                env
+            );
+        }
+
+
+        // =================================================
+        // EDIT PUT
+        // =================================================
+
+        if (
+            url.pathname.startsWith("/edit/") &&
+            request.method === "PUT"
+        ) {
+
+            return handleSaveEdit(
+                request,
+                env
+            );
+        }
+
+
+        // =================================================
+        // 404
+        // =================================================
+
+        return new Response(
+            "No encontrado.",
+            {
+                status: 404
+            }
+        );
+    }
+};
