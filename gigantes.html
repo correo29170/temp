@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Gigantes de la Industria</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        font-family: Arial, sans-serif;
+        color: #fff;
+    }
+
+    #chapters {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        background: #000;
+        padding: 20px;
+    }
+
+    #chapters h1 {
+        margin: 0 0 20px 0;
+        font-size: 26px;
+        text-align: center;
+    }
+
+    #chapters button {
+	text-align: left;
+        width: min(90%, 500px);
+        padding: 14px 20px;
+        background: #111;
+        border: 1px solid #444;
+        border-radius: 6px;
+        color: #ffffff;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    #chapters button:hover {
+        background: #ff0000;
+    }
+
+    #start-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        background: #000;
+        padding: 20px;
+    }
+
+    #start-screen p {
+        margin: 8px 0;
+        font-size: 48px;
+    }
+
+#start-button {
+    margin-top: 20px;
+    padding: 15px 30px;
+    background: #ff0000;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+    #video-container {
+        position: fixed;
+        inset: 0;
+        display: none;
+        background: #000;
+    }
+
+    #video {
+        width: 100%;
+        height: 100%;
+        border: 0;
+    }
+</style>
+</head>
+
+<body>
+
+<div id="chapters">
+
+    <h1>Gigantes de la Industria</h1>
+
+    <button onclick="seleccionar(0)">
+        1- UNA GUERRA NUEVA
+    </button>
+
+    <button onclick="seleccionar(1)">
+        2- OIL STRIKE
+    </button>
+
+    <button onclick="seleccionar(2)">
+        3- RIVALES
+    </button>
+
+    <button onclick="seleccionar(3)">
+        4- MUERTE
+    </button>
+
+    <button onclick="seleccionar(4)">
+        5- UN NUEVO CONTENDOR
+    </button>
+
+    <button onclick="seleccionar(5)">
+        6- EL DUEÑO DE TODO
+    </button>
+
+    <button onclick="seleccionar(6)">
+        7- ESTRATEGIA ELECTORAL
+    </button>
+
+    <button onclick="seleccionar(7)">
+        8- EL AUTOMÓVIL
+    </button>
+
+</div>
+
+
+<div id="start-screen">
+
+    <p>⚠️ Al iniciar el video comprobar que está en el comienzo.</p>
+
+    <button id="start-button">▶ Comenzar</button>
+
+</div>
+
+
+<div id="video-container">
+
+    <iframe
+        id="video"
+        src=""
+        allow="fullscreen; autoplay"
+        allowfullscreen>
+    </iframe>
+
+</div>
+
+
+<script>
+
+const capitulos = [
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-1-UNA-GUERRA-NUEVA-:a",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-2-Oil-Strike:9",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-3-RIVALES:8",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-4-MUERTE:2",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-5-UN-NUEVO-CONTENDOR:4",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-6-EL-DUE%C3%91O-DE-TODO:a",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-7-ESTRATEGIA-ELECTORAL-:6",
+
+    "https://odysee.com/$/embed/@ParaElMundo:3/Gigantes-de-la-Industria-8-EL-AUTOMOVIL:8"
+
+];
+
+
+function seleccionar(numero) {
+
+    const video = document.getElementById("video");
+
+    video.src = capitulos[numero];
+
+    document.getElementById("chapters").style.display = "none";
+
+    document.getElementById("start-screen").style.display = "flex";
+
+    history.pushState({capitulo: numero}, "", "#capitulo-" + (numero + 1));
+
+}
+
+
+window.addEventListener("popstate", function() {
+
+    document.getElementById("video").src = "";
+
+    document.getElementById("video-container").style.display = "none";
+
+    document.getElementById("start-screen").style.display = "none";
+
+    document.getElementById("chapters").style.display = "flex";
+
+});
+
+
+document.getElementById("start-button").addEventListener("click", async function() {
+
+    try {
+        await document.documentElement.requestFullscreen();
+    } catch (e) {
+        // Si el navegador no permite pantalla completa, continúa igualmente.
+    }
+
+    document.getElementById("start-screen").style.display = "none";
+    document.getElementById("video-container").style.display = "block";
+
+});
+
+</script>
+
+</body>
+</html>
